@@ -9,6 +9,7 @@ export interface ClassificationResult {
   model_suggestion: string;
   confidence: number;
   reasoning: string;
+  mode: 'ai' | 'rules'; // how it was classified
 }
 
 const TIER_TO_EFFORT: Record<Tier, Effort> = {
@@ -45,43 +46,93 @@ Rules:
 Respond with JSON only, no other text:
 {"tier": "fast"|"think"|"ultrathink", "confidence": 0.0-1.0, "reasoning": "one sentence max"}`;
 
-export async function classifyPrompt(
-  prompt: string,
-  apiKey: string
-): Promise<ClassificationResult> {
-  const client = new Anthropic({ apiKey });
+// Keyword-based fallback — used when no API key is provided
+function ruleBasedClassify(prompt: string): ClassificationResult {
+  const lower = prompt.toLowerCase().trim();
+  const wordCount = lower.split(/\s+/).length;
 
-  const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 150,
-    system: CLASSIFIER_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: 'user',
-        content: `Classify this prompt:\n\n${prompt}`,
-      },
-    ],
-  });
+  const ultrathinkSignals = [
+    'architect', 'distributed system', 'production-grade', 'from scratch',
+    'failure mode', 'multi-tenant', 'prove ', 'theorem', 'second-order',
+    'end-to-end system', 'scalable', '10 million', '100 million', 'at scale',
+    'complete system', 'full implementation', 'enterprise',
+  ];
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const thinkSignals = [
+    'debug', 'analyze', 'analyse', 'compare', 'refactor', 'review',
+    'design', 'implement', 'trade-off', 'tradeoff', 'test suite',
+    'optimize', 'improve', 'strategy', 'approach', 'how should',
+    'why does', 'explain', 'walk me through', 'help me understand',
+    'build a', 'write a', 'create a',
+  ];
 
-  let parsed: { tier: Tier; confidence: number; reasoning: string };
-  try {
-    // Strip markdown code fences if present (e.g. ```json ... ```)
-    const clean = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-    parsed = JSON.parse(clean);
-  } catch {
-    // Fallback if Haiku returns something unexpected
-    parsed = { tier: 'think', confidence: 0.5, reasoning: 'Classification failed, defaulting to think mode' };
+  if (ultrathinkSignals.some(k => lower.includes(k))) {
+    return {
+      tier: 'ultrathink', effort: 'max',
+      model_suggestion: TIER_TO_MODEL.ultrathink,
+      confidence: 0.7, mode: 'rules',
+      reasoning: 'Rule-based: detected deep architecture/design signals',
+    };
   }
 
-  const tier = (['fast', 'think', 'ultrathink'].includes(parsed.tier) ? parsed.tier : 'think') as Tier;
+  if (thinkSignals.some(k => lower.includes(k)) || wordCount > 25) {
+    return {
+      tier: 'think', effort: 'medium',
+      model_suggestion: TIER_TO_MODEL.think,
+      confidence: 0.7, mode: 'rules',
+      reasoning: 'Rule-based: detected analytical task or complex query',
+    };
+  }
 
   return {
-    tier,
-    effort: TIER_TO_EFFORT[tier],
-    model_suggestion: TIER_TO_MODEL[tier],
-    confidence: Math.min(1, Math.max(0, parsed.confidence ?? 0.8)),
-    reasoning: parsed.reasoning ?? '',
+    tier: 'fast', effort: 'none',
+    model_suggestion: TIER_TO_MODEL.fast,
+    confidence: 0.7, mode: 'rules',
+    reasoning: 'Rule-based: short or simple query',
   };
+}
+
+// apiKey is now optional — falls back to rule-based classification if not provided
+export async function classifyPrompt(
+  prompt: string,
+  apiKey?: string
+): Promise<ClassificationResult> {
+  if (!apiKey) {
+    return ruleBasedClassify(prompt);
+  }
+
+  try {
+    const client = new Anthropic({ apiKey });
+
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 150,
+      system: CLASSIFIER_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: `Classify this prompt:\n\n${prompt}` }],
+    });
+
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    const clean = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+
+    let parsed: { tier: Tier; confidence: number; reasoning: string };
+    try {
+      parsed = JSON.parse(clean);
+    } catch {
+      return ruleBasedClassify(prompt);
+    }
+
+    const tier = (['fast', 'think', 'ultrathink'].includes(parsed.tier) ? parsed.tier : 'think') as Tier;
+
+    return {
+      tier,
+      effort: TIER_TO_EFFORT[tier],
+      model_suggestion: TIER_TO_MODEL[tier],
+      confidence: Math.min(1, Math.max(0, parsed.confidence ?? 0.8)),
+      reasoning: parsed.reasoning ?? '',
+      mode: 'ai',
+    };
+  } catch {
+    // API call failed — fall back to rules rather than crashing
+    return ruleBasedClassify(prompt);
+  }
 }

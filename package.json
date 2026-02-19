@@ -1,6 +1,7 @@
 {
   "name": "mcp-thinkgate",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "mcpName": "io.github.tjp2021/mcp-thinkgate",
   "description": "MCP server that auto-classifies prompt complexity and routes to the right Claude thinking mode",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

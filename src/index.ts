@@ -16,8 +16,11 @@ if (require.main === module) {
   const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
   if (!ANTHROPIC_API_KEY) {
-    process.stderr.write('Error: ANTHROPIC_API_KEY environment variable is required\n');
-    process.exit(1);
+    process.stderr.write(
+      'mcp-thinkgate: No ANTHROPIC_API_KEY found — running in rule-based mode.\n' +
+      'Add your key to enable AI-powered classification (more accurate).\n' +
+      'Get a key at https://console.anthropic.com\n'
+    );
   }
 
   const server = new Server(
@@ -56,7 +59,7 @@ if (require.main === module) {
       throw new Error('prompt must be a non-empty string');
     }
 
-    const result = await classifyPrompt(prompt, ANTHROPIC_API_KEY!);
+    const result = await classifyPrompt(prompt, ANTHROPIC_API_KEY);
 
     const output = [
       `**Tier:** ${result.tier}`,
@@ -65,7 +68,8 @@ if (require.main === module) {
       `**Confidence:** ${Math.round(result.confidence * 100)}%`,
       `**Why:** ${result.reasoning}`,
       ``,
-      `**Anthropic API params:**`,
+      `**Classifier:** ${result.mode === 'ai' ? 'AI (Haiku)' : 'Rule-based (no API key)'}`,
+    `**Anthropic API params:**`,
       result.effort === 'none'
         ? '```json\n{ "thinking": { "type": "disabled" } }\n```'
         : `\`\`\`json\n{ "thinking": { "type": "enabled", "effort": "${result.effort}" } }\n\`\`\``,
