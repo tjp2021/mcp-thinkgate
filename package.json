@@ -1,0 +1,49 @@
+{
+  "name": "mcp-thinkgate",
+  "version": "0.1.0",
+  "description": "MCP server that auto-classifies prompt complexity and routes to the right Claude thinking mode",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./classifier": "./dist/classifier.js"
+  },
+  "bin": {
+    "mcp-thinkgate": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "mcp",
+    "claude",
+    "anthropic",
+    "thinking",
+    "router",
+    "thinkgate",
+    "extended-thinking",
+    "reasoning",
+    "selective-reasoning"
+  ],
+  "author": "Tim",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.0",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
