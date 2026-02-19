@@ -1,35 +1,63 @@
 # ThinkGate
 
-An MCP server that automatically classifies prompt complexity and routes to the right Claude thinking mode.
+**Automatic reasoning mode selection for Claude agents.**
 
-Stop manually deciding when to use extended thinking. ThinkGate uses a fast Haiku call to read your prompt and recommend the right tier — before your expensive model runs.
+---
+
+## The problem
+
+You built an AI agent. It handles everything — status checks, quick lookups, complex architecture questions, deep debugging sessions. But under the hood it runs every single message through the same model with the same thinking settings.
+
+That means you're burning extended thinking tokens on "what time is it in Tokyo?" and getting shallow answers on "help me design the entire auth system."
+
+You could manually tag requests — `ULTRATHINK:` before the hard ones. But you forget. Your users definitely won't do it. And if you're building agents for other people, you can't train every end user to manage thinking modes.
+
+**ThinkGate fixes this at the infrastructure layer.** It sits between the incoming message and your model call, classifies the complexity in ~200ms, and returns exactly which model and thinking depth to use. Automatically. Every time.
+
+---
+
+## Who this is for
+
+- **Agent builders** running Claude on a mix of simple and complex tasks who are tired of one-size-fits-all model settings
+- **Teams running 24/7 agents** (WhatsApp bots, Slack assistants, Telegram agents) where message complexity varies wildly and cost/latency actually matters
+- **Anyone who's ever typed `ULTRATHINK` manually** and thought: this should just happen on its own
+
+---
 
 ## How it works
 
 ```
-Your prompt → Haiku classifier (200ms, ~$0.0001) → tier decision → Claude runs with the right effort level
+Incoming message
+      ↓
+  Haiku call (~200ms, ~$0.0001)
+  "How complex is this?"
+      ↓
+  fast → no extended thinking
+  think → medium effort
+  ultrathink → max effort
+      ↓
+  Claude runs with the right settings
 ```
 
-Three tiers:
+A cheap, fast Haiku call reads your prompt and decides which tier it needs. Then your main Claude call runs with the right effort level. You pay almost nothing for the classification, and save real money (and latency) on the 60%+ of messages that don't need extended reasoning.
 
-| Tier | Effort | Use when |
-|------|--------|----------|
+The classifier is the IP here — not which model runs it. Three tiers. A system prompt trained on the boundary between "this needs thinking" and "this doesn't." Works out of the box.
+
+---
+
+## Tiers
+
+| Tier | Claude effort | When |
+|------|--------------|------|
 | `fast` | `low` | Factual, conversational, simple edits |
 | `think` | `medium` | Architecture, debugging, multi-step analysis |
-| `ultrathink` | `high` | System design, proofs, complex open-ended problems |
+| `ultrathink` | `high` | System design, proofs, open-ended complexity |
 
 ---
 
-## Setup
+## Use as an MCP tool (Claude Desktop / Claude Code)
 
-### Requirements
-
-- Node.js 18+
-- An Anthropic API key
-
-### Claude Code (global)
-
-Add to `~/.claude/settings.json`:
+Add to `~/.claude/settings.json` (Claude Code) or `~/Library/Application Support/Claude/claude_desktop_config.json` (Claude Desktop):
 
 ```json
 {
@@ -45,82 +73,57 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-Restart Claude Code.
+Restart Claude. Now you can ask it to classify before it answers:
 
-### Claude Desktop
+> "Before responding, classify the complexity of this task: design a rate limiter for a public API"
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "thinkgate": {
-      "command": "npx",
-      "args": ["-y", "mcp-thinkgate"],
-      "env": {
-        "ANTHROPIC_API_KEY": "your-api-key-here"
-      }
-    }
-  }
-}
-```
-
-Restart Claude Desktop.
-
----
-
-## Usage as MCP tool
-
-Once installed, Claude has access to the `classify_complexity` tool.
-
-**Example:**
-> "Before answering, classify the complexity of this task: Design a rate limiter for a public API"
-
-**Example output:**
 ```
 Tier: think
 Effort: medium
 Suggested model: claude-sonnet-4-6
 Confidence: 92%
 Why: Requires structured design reasoning and trade-off analysis, but has well-defined scope.
-
-Anthropic API params:
-{ "thinking": { "type": "enabled", "effort": "medium" } }
 ```
 
 ---
 
-## Usage as a library (programmatic)
+## Use as a library (agent frameworks)
 
-Import the classifier directly into your own agent framework:
+Install:
+
+```bash
+npm install mcp-thinkgate
+```
+
+Import and use:
 
 ```typescript
-import { classifyPrompt } from 'mcp-thinkgate/classifier';
+import { classifyPrompt } from 'mcp-thinkgate';
 
 const result = await classifyPrompt(userMessage, process.env.ANTHROPIC_API_KEY!);
-console.log(result.tier);    // 'fast' | 'think' | 'ultrathink'
-console.log(result.effort);  // 'none' | 'medium' | 'max'
+
+// result.tier       → 'fast' | 'think' | 'ultrathink'
+// result.effort     → 'none' | 'medium' | 'max'
+// result.confidence → 0.0 - 1.0
+// result.reasoning  → one sentence explanation
 ```
 
 ---
 
-## Reference implementation: TinyClaw integration
+## Reference implementation: TinyClaw
 
-[TinyClaw](https://github.com/tjp2021/tinyclaw) is an open-source multi-agent framework for Claude. ThinkGate is integrated into its `invokeAgent` function as a reference for how to wire selective reasoning into any Claude-based agent.
+[TinyClaw](https://github.com/tjp2021/tinyclaw) is an open-source multi-agent framework for Claude. ThinkGate is wired into its `invokeAgent()` function — every message is automatically classified before the Claude CLI runs, and `--effort` is set accordingly.
 
-The integration adds ~200ms and ~$0.0001 to each message in exchange for automatically routing every prompt to the right thinking mode. For agents handling a mix of simple and complex tasks (which is most of them), this saves tokens on easy messages and unlocks full reasoning on hard ones.
+Three lines added. Zero config required. Every agent in every team automatically gets the right thinking depth.
 
-See [`src/lib/invoke.ts`](https://github.com/tjp2021/tinyclaw/blob/main/src/lib/invoke.ts) for the full implementation.
-
----
-
-## Why this exists
-
-Claude's extended thinking is powerful but costly. Using it on simple questions wastes time and money. Skipping it on complex problems gives worse answers.
-
-The research is clear: there are three performance regimes. Simple tasks where thinking *hurts*, medium tasks where it helps, and hard tasks where you need maximum reasoning budget. ThinkGate puts the classification on autopilot using a model that costs almost nothing to run.
+See the integration at [`src/lib/invoke.ts`](https://github.com/tjp2021/tinyclaw/blob/main/src/lib/invoke.ts).
 
 ---
+
+## Requirements
+
+- Node.js 18+
+- Anthropic API key
 
 ## Local development
 
