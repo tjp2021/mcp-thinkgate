@@ -1,0 +1,14 @@
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      ANTHROPIC_API_KEY:
+        type: string
+        description: "Optional. Enables AI-powered classification (more accurate). Falls back to rule-based if not provided."
+  commandFunction: |
+    (config) => ({
+      command: "npx",
+      args: ["-y", "mcp-thinkgate"],
+      env: config.ANTHROPIC_API_KEY ? { ANTHROPIC_API_KEY: config.ANTHROPIC_API_KEY } : {}
+    })
