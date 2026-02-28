@@ -14,6 +14,7 @@ npm install
 
 | Command | What it does |
 |---------|-------------|
+| `npm run dev` | Run the MCP server directly (no build needed) |
 | `npm run build` | Compile TypeScript to `dist/` |
 | `npm run typecheck` | Type-check without emitting |
 | `npm run lint` | Run ESLint |

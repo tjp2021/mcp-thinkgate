@@ -15,18 +15,7 @@ export type { ClassificationResult, ClassifierOptions, Tier, Effort } from './cl
 export { setLogLevel } from './logger.js';
 export type { LogLevel } from './logger.js';
 
-// Only start the MCP server when run directly (not when imported as a library)
-if (require.main === module) {
-  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-
-  if (!ANTHROPIC_API_KEY) {
-    process.stderr.write(
-      'mcp-thinkgate: No ANTHROPIC_API_KEY found — running in rule-based mode.\n' +
-        'Add your key to enable AI-powered classification (more accurate).\n' +
-        'Get a key at https://console.anthropic.com\n',
-    );
-  }
-
+export function createServer(apiKey?: string): Server {
   const server = new Server(
     { name: 'mcp-thinkgate', version: '0.2.0' },
     { capabilities: { tools: {} } },
@@ -57,7 +46,7 @@ if (require.main === module) {
       request.params.name,
       request.params.arguments as Record<string, unknown> | undefined,
     );
-    const result = await classifyPrompt(prompt, ANTHROPIC_API_KEY);
+    const result = await classifyPrompt(prompt, apiKey);
     const output = formatClassificationOutput(result);
 
     return {
@@ -65,7 +54,23 @@ if (require.main === module) {
     };
   });
 
+  return server;
+}
+
+// Only start when run directly (not when imported as a library)
+if (require.main === module) {
+  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+
+  if (!ANTHROPIC_API_KEY) {
+    process.stderr.write(
+      'mcp-thinkgate: No ANTHROPIC_API_KEY found — running in rule-based mode.\n' +
+        'Add your key to enable AI-powered classification (more accurate).\n' +
+        'Get a key at https://console.anthropic.com\n',
+    );
+  }
+
   const main = async () => {
+    const server = createServer(ANTHROPIC_API_KEY);
     const transport = new StdioServerTransport();
     await server.connect(transport);
     log('info', 'mcp-thinkgate running');
