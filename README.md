@@ -98,7 +98,10 @@ npm install mcp-thinkgate
 Import and use:
 
 ```typescript
-import { classifyPrompt } from 'mcp-thinkgate';
+import { classifyPrompt, setLogLevel } from 'mcp-thinkgate';
+
+// Optional: silence logs (default level is 'info', writes to stderr)
+setLogLevel('error');
 
 const result = await classifyPrompt(userMessage, process.env.ANTHROPIC_API_KEY!);
 
@@ -106,6 +109,9 @@ const result = await classifyPrompt(userMessage, process.env.ANTHROPIC_API_KEY!)
 // result.effort     → 'none' | 'medium' | 'max'
 // result.confidence → 0.0 - 1.0
 // result.reasoning  → one sentence explanation
+
+// Works without an API key too (rule-based fallback):
+const quickResult = await classifyPrompt(userMessage);
 ```
 
 ---

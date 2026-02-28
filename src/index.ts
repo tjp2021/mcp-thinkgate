@@ -12,6 +12,8 @@ import { log } from './logger.js';
 // Re-export for library consumers
 export { classifyPrompt, clearCache } from './classifier.js';
 export type { ClassificationResult, ClassifierOptions, Tier, Effort } from './classifier.js';
+export { setLogLevel } from './logger.js';
+export type { LogLevel } from './logger.js';
 
 // Only start the MCP server when run directly (not when imported as a library)
 if (require.main === module) {
