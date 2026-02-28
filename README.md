@@ -49,9 +49,9 @@ The classifier is the IP here — not which model runs it. Three tiers. A system
 
 | Tier | Claude effort | When |
 |------|--------------|------|
-| `fast` | `low` | Factual, conversational, simple edits |
+| `fast` | `none` | Factual, conversational, simple edits |
 | `think` | `medium` | Architecture, debugging, multi-step analysis |
-| `ultrathink` | `high` | System design, proofs, open-ended complexity |
+| `ultrathink` | `max` | System design, proofs, open-ended complexity |
 
 ---
 
@@ -123,7 +123,7 @@ See the integration at [`src/lib/invoke.ts`](https://github.com/tjp2021/tinyclaw
 ## Requirements
 
 - Node.js 18+
-- Anthropic API key
+- Anthropic API key (optional — falls back to rule-based classification)
 
 ## Local development
 
@@ -131,9 +131,18 @@ See the integration at [`src/lib/invoke.ts`](https://github.com/tjp2021/tinyclaw
 git clone https://github.com/tjp2021/mcp-thinkgate
 cd mcp-thinkgate
 npm install
-ANTHROPIC_API_KEY=your-key npm start
+npm test
+npm run build
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, commands, and PR process.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE)
