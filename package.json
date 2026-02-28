@@ -16,11 +16,19 @@
     "build": "tsc",
     "prepare": "npm run build",
     "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "keywords": [
     "mcp",
@@ -33,16 +41,30 @@
     "reasoning",
     "selective-reasoning"
   ],
-  "author": "Tim",
+  "author": "Tim <engineering@iteachyouai.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tjp2021/mcp-thinkgate.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tjp2021/mcp-thinkgate/issues"
+  },
+  "homepage": "https://github.com/tjp2021/mcp-thinkgate#readme",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.0",
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "lru-cache": "^11.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.0.0",
     "@types/node": "^22.0.0",
-    "ts-node": "^10.9.0",
-    "typescript": "^5.0.0"
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^10.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
   },
   "engines": {
     "node": ">=18"
