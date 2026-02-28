@@ -26,7 +26,7 @@ if (require.main === module) {
   }
 
   const server = new Server(
-    { name: 'mcp-thinkgate', version: '0.1.1' },
+    { name: 'mcp-thinkgate', version: '0.2.0' },
     { capabilities: { tools: {} } },
   );
 
