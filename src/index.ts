@@ -6,10 +6,12 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { classifyPrompt } from './classifier.js';
+import { formatClassificationOutput, validateToolRequest } from './handlers.js';
+import { log } from './logger.js';
 
-// Re-export classifier for programmatic use (library mode)
-export { classifyPrompt } from './classifier.js';
-export type { ClassificationResult, Tier, Effort } from './classifier.js';
+// Re-export for library consumers
+export { classifyPrompt, clearCache } from './classifier.js';
+export type { ClassificationResult, ClassifierOptions, Tier, Effort } from './classifier.js';
 
 // Only start the MCP server when run directly (not when imported as a library)
 if (require.main === module) {
@@ -18,14 +20,14 @@ if (require.main === module) {
   if (!ANTHROPIC_API_KEY) {
     process.stderr.write(
       'mcp-thinkgate: No ANTHROPIC_API_KEY found — running in rule-based mode.\n' +
-      'Add your key to enable AI-powered classification (more accurate).\n' +
-      'Get a key at https://console.anthropic.com\n'
+        'Add your key to enable AI-powered classification (more accurate).\n' +
+        'Get a key at https://console.anthropic.com\n',
     );
   }
 
   const server = new Server(
-    { name: 'mcp-thinkgate', version: '0.1.0' },
-    { capabilities: { tools: {} } }
+    { name: 'mcp-thinkgate', version: '0.1.1' },
+    { capabilities: { tools: {} } },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -49,31 +51,12 @@ if (require.main === module) {
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    if (request.params.name !== 'classify_complexity') {
-      throw new Error(`Unknown tool: ${request.params.name}`);
-    }
-
-    const { prompt } = request.params.arguments as { prompt: string };
-
-    if (!prompt || typeof prompt !== 'string') {
-      throw new Error('prompt must be a non-empty string');
-    }
-
+    const prompt = validateToolRequest(
+      request.params.name,
+      request.params.arguments as Record<string, unknown> | undefined,
+    );
     const result = await classifyPrompt(prompt, ANTHROPIC_API_KEY);
-
-    const output = [
-      `**Tier:** ${result.tier}`,
-      `**Effort:** ${result.effort}`,
-      `**Suggested model:** ${result.model_suggestion}`,
-      `**Confidence:** ${Math.round(result.confidence * 100)}%`,
-      `**Why:** ${result.reasoning}`,
-      ``,
-      `**Classifier:** ${result.mode === 'ai' ? 'AI (Haiku)' : 'Rule-based (no API key)'}`,
-    `**Anthropic API params:**`,
-      result.effort === 'none'
-        ? '```json\n{ "thinking": { "type": "disabled" } }\n```'
-        : `\`\`\`json\n{ "thinking": { "type": "enabled", "effort": "${result.effort}" } }\n\`\`\``,
-    ].join('\n');
+    const output = formatClassificationOutput(result);
 
     return {
       content: [{ type: 'text', text: output }],
@@ -83,7 +66,7 @@ if (require.main === module) {
   const main = async () => {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    process.stderr.write('mcp-thinkgate running\n');
+    log('info', 'mcp-thinkgate running');
   };
 
   main().catch((err) => {
