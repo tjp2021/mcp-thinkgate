@@ -6,6 +6,9 @@ import { classifyPrompt } from './classifier.js';
 import { formatClassificationOutput, validateToolRequest } from './handlers.js';
 import { log } from './logger.js';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { version } = require('../package.json') as { version: string };
+
 // Re-export for library consumers
 export { classifyPrompt, clearCache } from './classifier.js';
 export type { ClassificationResult, ClassifierOptions, Tier, Effort } from './classifier.js';
@@ -14,7 +17,7 @@ export type { LogLevel } from './logger.js';
 
 export function createServer(apiKey?: string): Server {
   const server = new Server(
-    { name: 'mcp-thinkgate', version: '0.2.0' },
+    { name: 'mcp-thinkgate', version },
     { capabilities: { tools: {} } },
   );
 
