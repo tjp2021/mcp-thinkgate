@@ -5,7 +5,7 @@ startCommand:
     properties:
       ANTHROPIC_API_KEY:
         type: string
-        description: "Optional. Enables AI-powered classification (more accurate). Falls back to rule-based if not provided."
+        description: 'Optional. Enables AI-powered classification (more accurate). Falls back to rule-based if not provided.'
   commandFunction: |
     (config) => ({
       command: "npx",

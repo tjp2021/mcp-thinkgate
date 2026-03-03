@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2026-02-28
 
 ### Added
+
 - Input validation (max length, type checking, whitespace-only rejection)
 - LRU cache for classification results (500 entries, 5min TTL)
 - Anthropic client singleton (reuse across calls)
@@ -21,15 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Issue and PR templates
 
 ### Changed
+
 - README tier table: corrected effort values (none/medium/max)
 
 ### Fixed
+
 - Server version mismatch (was 0.1.0, now matches package.json)
 - Indentation bug in index.ts output formatting
 
 ## [0.1.1] - 2026-02-19
 
 ### Added
+
 - Rule-based fallback classification (no API key required)
 - `mode` field on `ClassificationResult` (`'ai' | 'rules'`)
 - `mcpName` for official MCP registry
@@ -39,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-02-19
 
 ### Added
+
 - Initial release
 - MCP server with `classify_complexity` tool
 - AI-powered classification via Haiku

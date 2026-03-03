@@ -6,12 +6,12 @@
     "url": "https://github.com/tjp2021/mcp-thinkgate",
     "source": "github"
   },
-  "version": "0.1.1",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "mcp-thinkgate",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "transport": {
         "type": "stdio"
       },

@@ -1,6 +1,6 @@
 name: Bug Report
 description: Report a bug in mcp-thinkgate
-labels: ["bug"]
+labels: ['bug']
 body:
   - type: textarea
     id: description
@@ -27,14 +27,14 @@ body:
     id: version
     attributes:
       label: Package Version
-      placeholder: "0.2.0"
+      placeholder: '0.2.0'
     validations:
       required: true
   - type: input
     id: node-version
     attributes:
       label: Node.js Version
-      placeholder: "20.11.0"
+      placeholder: '20.11.0'
     validations:
       required: true
   - type: dropdown

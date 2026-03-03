@@ -12,17 +12,17 @@ npm install
 
 ## Commands
 
-| Command | What it does |
-|---------|-------------|
-| `npm run dev` | Run the MCP server directly (no build needed) |
-| `npm run build` | Compile TypeScript to `dist/` |
-| `npm run typecheck` | Type-check without emitting |
-| `npm run lint` | Run ESLint |
-| `npm run lint:fix` | Run ESLint with auto-fix |
-| `npm run format` | Format code with Prettier |
-| `npm run format:check` | Check formatting without writing |
-| `npm test` | Run tests with Vitest |
-| `npm run test:coverage` | Run tests with coverage report |
+| Command                 | What it does                                  |
+| ----------------------- | --------------------------------------------- |
+| `npm run dev`           | Run the MCP server directly (no build needed) |
+| `npm run build`         | Compile TypeScript to `dist/`                 |
+| `npm run typecheck`     | Type-check without emitting                   |
+| `npm run lint`          | Run ESLint                                    |
+| `npm run lint:fix`      | Run ESLint with auto-fix                      |
+| `npm run format`        | Format code with Prettier                     |
+| `npm run format:check`  | Check formatting without writing              |
+| `npm test`              | Run tests with Vitest                         |
+| `npm run test:coverage` | Run tests with coverage report                |
 
 ## Making Changes
 
@@ -45,6 +45,7 @@ We use conventional commit messages:
 - `refactor:` — code change that neither fixes a bug nor adds a feature
 
 Examples:
+
 ```
 feat: add prompt length validation
 fix: handle empty string input gracefully

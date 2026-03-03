@@ -1,5 +1,7 @@
 # ThinkGate
 
+[![CI](https://github.com/tjp2021/mcp-thinkgate/actions/workflows/ci.yml/badge.svg)](https://github.com/tjp2021/mcp-thinkgate/actions/workflows/ci.yml)
+
 **Automatic reasoning mode selection for Claude agents.**
 
 ---
@@ -47,11 +49,11 @@ The classifier is the IP here — not which model runs it. Three tiers. A system
 
 ## Tiers
 
-| Tier | Claude effort | When |
-|------|--------------|------|
-| `fast` | `none` | Factual, conversational, simple edits |
-| `think` | `medium` | Architecture, debugging, multi-step analysis |
-| `ultrathink` | `max` | System design, proofs, open-ended complexity |
+| Tier         | Claude effort | When                                         |
+| ------------ | ------------- | -------------------------------------------- |
+| `fast`       | `none`        | Factual, conversational, simple edits        |
+| `think`      | `medium`      | Architecture, debugging, multi-step analysis |
+| `ultrathink` | `max`         | System design, proofs, open-ended complexity |
 
 ---
 
@@ -128,7 +130,7 @@ See the integration at [`src/lib/invoke.ts`](https://github.com/tjp2021/tinyclaw
 
 ## Requirements
 
-- Node.js 18+
+- Node.js 20+
 - Anthropic API key (optional — falls back to rule-based classification)
 
 ## Local development

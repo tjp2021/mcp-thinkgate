@@ -3,7 +3,7 @@
 ## Supported Versions
 
 | Version | Supported |
-|---------|-----------|
+| ------- | --------- |
 | 0.2.x   | Yes       |
 | < 0.2   | No        |
 
@@ -14,11 +14,13 @@ If you discover a security issue, please report it responsibly.
 **Email:** engineering@iteachyouai.com
 
 **Please include:**
+
 - Description of the issue
 - Steps to reproduce
 - Impact assessment
 
 **Response timeline:**
+
 - Acknowledgment within 72 hours
 - Fix target within 30 days
 

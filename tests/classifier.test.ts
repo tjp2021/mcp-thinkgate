@@ -219,9 +219,7 @@ describe('AI classification', () => {
 
   it('coerces invalid tier to think', async () => {
     mockCreate.mockResolvedValueOnce({
-      content: [
-        { type: 'text', text: '{"tier":"invalid","confidence":0.8,"reasoning":"test"}' },
-      ],
+      content: [{ type: 'text', text: '{"tier":"invalid","confidence":0.8,"reasoning":"test"}' }],
     });
 
     const result = await classifyPrompt('test', 'sk-test-key');
@@ -368,7 +366,11 @@ describe('ruleBasedClassify direct', () => {
   });
 
   it('uses provided model mapping', () => {
-    const result = ruleBasedClassify('hello', { ...DEFAULT_MODELS, fast: 'my-model' }, DEFAULT_EFFORTS);
+    const result = ruleBasedClassify(
+      'hello',
+      { ...DEFAULT_MODELS, fast: 'my-model' },
+      DEFAULT_EFFORTS,
+    );
     expect(result.model_suggestion).toBe('my-model');
   });
 });
