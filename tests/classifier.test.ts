@@ -176,6 +176,21 @@ describe('rule-based classification', () => {
 // AI classification
 // ============================
 describe('AI classification', () => {
+  it('honors explicit ultrathink override without calling the API', async () => {
+    const result = await classifyPrompt('ultrathink: design a cache', 'sk-test-key');
+    expect(result.tier).toBe('ultrathink');
+    expect(result.mode).toBe('rules');
+    expect(result.reasoning).toMatch(/override/i);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('honors explicit fast override without calling the API', async () => {
+    const result = await classifyPrompt('cheap mode: summarize this', 'sk-test-key');
+    expect(result.tier).toBe('fast');
+    expect(result.mode).toBe('rules');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
   it('calls Anthropic API with correct params', async () => {
     mockCreate.mockResolvedValueOnce({
       content: [{ type: 'text', text: '{"tier":"think","confidence":0.9,"reasoning":"test"}' }],

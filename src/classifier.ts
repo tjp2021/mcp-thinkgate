@@ -188,17 +188,18 @@ function isShortAck(lower: string): boolean {
  * Important change vs 0.2.0: long pastes no longer auto-upgrade to THINK.
  * Length alone is a weak complexity signal for Tim's multi-line checklists.
  */
-export function ruleBasedClassify(
+/**
+ * Explicit user overrides (highest priority, both rules and AI paths).
+ * Returns a result on override hit, null otherwise.
+ */
+export function detectOverride(
   prompt: string,
   tierToModel: Record<Tier, string>,
   tierToEffort: Record<Tier, Effort>,
   profileName = 'claude',
-): ClassificationResult {
+): ClassificationResult | null {
   const lower = prompt.toLowerCase().trim();
-  const wordCount = countWords(lower);
-  const lineCount = lower.split(/\n/).length;
 
-  // Explicit user overrides (highest priority)
   if (
     /\b(ultrathink|think\s*hard|deep\s*reason|max\s*effort)\b/.test(lower) ||
     lower.includes('use opus') ||
@@ -229,6 +230,23 @@ export function ruleBasedClassify(
       reasoning: 'Rule-based: explicit cheap/fast override',
     };
   }
+
+  return null;
+}
+
+export function ruleBasedClassify(
+  prompt: string,
+  tierToModel: Record<Tier, string>,
+  tierToEffort: Record<Tier, Effort>,
+  profileName = 'claude',
+): ClassificationResult {
+  const lower = prompt.toLowerCase().trim();
+  const wordCount = countWords(lower);
+  const lineCount = lower.split(/\n/).length;
+
+  // Explicit user overrides (highest priority)
+  const override = detectOverride(prompt, tierToModel, tierToEffort, profileName);
+  if (override) return override;
 
   const ultrathinkSignals = [
     'architect a',
@@ -466,7 +484,14 @@ export async function classifyPrompt(
     return result;
   }
 
-  // AI path
+  // AI path — explicit overrides still win (and skip the Haiku call entirely)
+  const override = detectOverride(cleaned, tierToModel, tierToEffort, profileName);
+  if (override) {
+    if (useCache) cache.set(cacheKey(`ai:${mappingHash}`, cleaned), override);
+    log('info', 'classified', { mode: 'rules', tier: override.tier, profile: profileName, reason: 'explicit override' });
+    return override;
+  }
+
   const aiKey = cacheKey(`ai:${mappingHash}`, cleaned);
   if (useCache) {
     const cached = cache.get(aiKey);
