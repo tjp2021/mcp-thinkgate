@@ -53,7 +53,24 @@ The classifier is the IP here — not which model runs it. Three tiers. A system
 | ------------ | ------------- | -------------------------------------------- |
 | `fast`       | `none`        | Factual, conversational, simple edits        |
 | `think`      | `medium`      | Architecture, debugging, multi-step analysis |
-| `ultrathink` | `max`         | System design, proofs, open-ended complexity |
+| `ultrathink` | `max` / `high`| System design, proofs, open-ended complexity |
+
+## Profiles (model mapping)
+
+Set `THINKGATE_PROFILE` or pass `{ profile }` to `classifyPrompt`:
+
+| Profile | fast | think | ultrathink |
+| ------- | ---- | ----- | ---------- |
+| `claude` (default) | `claude-haiku-4-5-...` | `claude-sonnet-4-6` | `claude-opus-4-6` |
+| `openrouter-cost` | `google/gemini-2.5-flash` | `anthropic/claude-sonnet-4.5` | `anthropic/claude-opus-4.6` |
+| `openrouter-balanced` | `anthropic/claude-haiku-4.5` | `anthropic/claude-sonnet-4.5` | `anthropic/claude-opus-4.6` |
+
+Per-tier overrides: `THINKGATE_FAST_MODEL`, `THINKGATE_THINK_MODEL`, `THINKGATE_ULTRA_MODEL`.
+
+**Cost note:** the MCP tool is advisory. Hosts must actually switch models.
+Pi does this via `~/.pi/agent/extensions/thinkgate-router.ts` + `thinkgate.json`.
+
+Rule mode (no API key) is free and preferred for auto-routing. Long checklist pastes no longer auto-upgrade to THINK.
 
 ---
 

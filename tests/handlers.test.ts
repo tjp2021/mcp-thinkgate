@@ -55,7 +55,15 @@ describe('formatClassificationOutput', () => {
 describe('validateToolRequest', () => {
   it('returns prompt for valid request', () => {
     const result = validateToolRequest('classify_complexity', { prompt: 'hello' });
-    expect(result).toBe('hello');
+    expect(result).toEqual({ prompt: 'hello' });
+  });
+
+  it('returns optional profile', () => {
+    const result = validateToolRequest('classify_complexity', {
+      prompt: 'hello',
+      profile: 'openrouter-cost',
+    });
+    expect(result).toEqual({ prompt: 'hello', profile: 'openrouter-cost' });
   });
 
   it('throws for unknown tool name', () => {

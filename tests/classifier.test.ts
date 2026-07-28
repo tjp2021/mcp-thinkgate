@@ -108,10 +108,26 @@ describe('rule-based classification', () => {
     expect(result.tier).toBe('think');
   });
 
-  it('classifies long prompts (>25 words) as think', async () => {
+  it('does not upgrade long filler pastes to think (cost fix)', async () => {
     const words = Array.from({ length: 30 }, (_, i) => `word${i}`).join(' ');
     const result = await classifyPrompt(words);
-    expect(result.tier).toBe('think');
+    expect(result.tier).toBe('fast');
+  });
+
+  it('keeps long multi-line checklists on fast without analytical signals', async () => {
+    const checklist = Array.from({ length: 12 }, (_, i) => `- step ${i}: do the thing`).join('\n');
+    const result = await classifyPrompt(checklist);
+    expect(result.tier).toBe('fast');
+  });
+
+  it('honors openrouter-cost profile model ids', async () => {
+    const result = await classifyPrompt('hello', undefined, {
+      profile: 'openrouter-cost',
+      useEnvProfile: false,
+    });
+    expect(result.tier).toBe('fast');
+    expect(result.model_suggestion).toBe('qwen/qwen3-next-80b-a3b-thinking');
+    expect(result.profile).toBe('openrouter-cost');
   });
 
   it('classifies architect signals as ultrathink', async () => {
@@ -131,19 +147,23 @@ describe('rule-based classification', () => {
   });
 
   it('maps correct model for each tier', async () => {
-    const fast = await classifyPrompt('hi');
+    const fast = await classifyPrompt('hi', undefined, { useEnvProfile: false });
     expect(fast.model_suggestion).toBe('claude-haiku-4-5-20251001');
 
-    const think = await classifyPrompt('debug this');
+    const think = await classifyPrompt('debug this', undefined, { useEnvProfile: false });
     expect(think.model_suggestion).toBe('claude-sonnet-4-6');
 
-    const ultra = await classifyPrompt('architect a system');
+    const ultra = await classifyPrompt('architect a system', undefined, { useEnvProfile: false });
     expect(ultra.model_suggestion).toBe('claude-opus-4-6');
   });
 
-  it('always returns confidence 0.7 for rules mode', async () => {
-    const result = await classifyPrompt('hello');
-    expect(result.confidence).toBe(0.7);
+  it('returns rules-mode confidence in expected band', async () => {
+    const short = await classifyPrompt('hello');
+    expect(short.confidence).toBeGreaterThanOrEqual(0.7);
+    expect(short.confidence).toBeLessThanOrEqual(1);
+
+    const analytical = await classifyPrompt('debug this function');
+    expect(analytical.confidence).toBe(0.8);
   });
 
   it('always returns mode rules when no API key', async () => {
@@ -349,6 +369,7 @@ describe('options', () => {
   it('partial merge keeps defaults for unspecified tiers', async () => {
     const result = await classifyPrompt('debug this', undefined, {
       tierToModel: { fast: 'custom-fast' },
+      useEnvProfile: false,
     });
     // think tier should still use default
     expect(result.model_suggestion).toBe('claude-sonnet-4-6');

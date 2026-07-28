@@ -1,4 +1,12 @@
-import type { ClassificationResult } from './classifier.js';
+import type { ClassificationResult, Effort } from './classifier.js';
+
+function anthropicThinkingBlock(effort: Effort): string {
+  if (effort === 'none') {
+    return '```json\n{ "thinking": { "type": "disabled" } }\n```';
+  }
+  // Anthropic adaptive + effort OR legacy enabled+effort depending on host.
+  return `\`\`\`json\n{ "thinking": { "type": "enabled", "effort": "${effort}" } }\n\`\`\``;
+}
 
 export function formatClassificationOutput(result: ClassificationResult): string {
   const lines = [
@@ -9,11 +17,10 @@ export function formatClassificationOutput(result: ClassificationResult): string
     `**Why:** ${result.reasoning}`,
     ``,
     `**Classifier:** ${result.mode === 'ai' ? 'AI (Haiku)' : 'Rule-based (no API key)'}`,
+    result.profile ? `**Profile:** ${result.profile}` : undefined,
     `**Anthropic API params:**`,
-    result.effort === 'none'
-      ? '```json\n{ "thinking": { "type": "disabled" } }\n```'
-      : `\`\`\`json\n{ "thinking": { "type": "enabled", "effort": "${result.effort}" } }\n\`\`\``,
-  ];
+    anthropicThinkingBlock(result.effort),
+  ].filter((line): line is string => line !== undefined);
 
   return lines.join('\n');
 }
@@ -21,7 +28,7 @@ export function formatClassificationOutput(result: ClassificationResult): string
 export function validateToolRequest(
   name: string,
   args: Record<string, unknown> | undefined,
-): string {
+): { prompt: string; profile?: string } {
   if (name !== 'classify_complexity') {
     throw new Error(`Unknown tool: ${name}`);
   }
@@ -31,5 +38,10 @@ export function validateToolRequest(
     throw new Error('prompt must be a non-empty string');
   }
 
-  return prompt;
+  const profile = args?.profile;
+  if (profile !== undefined && typeof profile !== 'string') {
+    throw new Error('profile must be a string when provided');
+  }
+
+  return { prompt, profile };
 }

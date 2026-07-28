@@ -2,9 +2,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import { LRUCache } from 'lru-cache';
 import { createHash } from 'crypto';
 import { log } from './logger.js';
+import { CLAUDE_PROFILE, profileFromEnv, resolveProfile, type ProfileName } from './profiles.js';
 
 export type Tier = 'fast' | 'think' | 'ultrathink';
-export type Effort = 'none' | 'medium' | 'max';
+/** none | medium | high | max — high added for OpenRouter / pi thinking ladders */
+export type Effort = 'none' | 'medium' | 'high' | 'max';
 
 export interface ClassificationResult {
   tier: Tier;
@@ -13,47 +15,51 @@ export interface ClassificationResult {
   confidence: number;
   reasoning: string;
   mode: 'ai' | 'rules';
+  profile?: ProfileName | string;
 }
 
 export interface ClassifierOptions {
   tierToModel?: Partial<Record<Tier, string>>;
   tierToEffort?: Partial<Record<Tier, Effort>>;
+  /** Named cost/quality profile (claude | openrouter-cost | openrouter-balanced) */
+  profile?: ProfileName | string;
+  /** Prefer profileFromEnv() defaults when true (default: true) */
+  useEnvProfile?: boolean;
   cache?: boolean;
   maxPromptLength?: number;
 }
 
 const DEFAULT_TIER_TO_EFFORT: Record<Tier, Effort> = {
-  fast: 'none',
-  think: 'medium',
-  ultrathink: 'max',
+  ...CLAUDE_PROFILE.tierToEffort,
 };
 
 const DEFAULT_TIER_TO_MODEL: Record<Tier, string> = {
-  fast: 'claude-haiku-4-5-20251001',
-  think: 'claude-sonnet-4-6',
-  ultrathink: 'claude-opus-4-6',
+  ...CLAUDE_PROFILE.tierToModel,
 };
 
 const DEFAULT_MAX_PROMPT_LENGTH = 50_000;
 
-const CLASSIFIER_SYSTEM_PROMPT = `You are a reasoning complexity classifier. Your job is to read a prompt and decide how much thinking it needs.
+const CLASSIFIER_SYSTEM_PROMPT = `You are a reasoning complexity classifier for coding-agent traffic. Decide how much model + thinking capacity a prompt needs.
 
 Classify into exactly one tier:
 
-FAST — No extended reasoning needed. Simple, direct, or conversational.
-Examples: "What's the capital of France?", "Fix this typo", "Translate this to Spanish", "Summarize this paragraph", "What does this error mean?", "Write a short bio", "Format this JSON"
+FAST — Cheap model, no extended reasoning. Mechanical or narrow work.
+Examples: status checks, "what time is it", fix a typo, run tests, grep/find/ls, install deps, format JSON, summarize a short error, rename a symbol, reply to a one-line clarification, paste the user already solved, cost/usage lookup.
 
-THINK — Benefits from structured reasoning. Analytical, design-oriented, or multi-step.
-Examples: "Debug why this algorithm is slow", "Design an API for a todo app", "Compare these two approaches", "Write a comprehensive test suite", "Explain the trade-offs of X vs Y", "Refactor this module", "Review this code for issues"
+THINK — Mid model + medium reasoning. Real analysis or multi-step coding judgment.
+Examples: debug a non-trivial bug, design a small API, compare approaches with tradeoffs, review a module, write a real test suite, implement a focused feature across a few files, refactor with behavior at risk.
 
-ULTRATHINK — Requires deep, extended reasoning. Highly complex, open-ended, or architecturally significant.
-Examples: "Architect a system handling 10M users", "Prove this is O(n log n)", "Design a complete auth system from scratch", "Analyze all failure modes of this distributed design", "Build a production-grade pipeline for X", "What are the second-order effects of Y on Z"
+ULTRATHINK — Expensive model + deep reasoning. Rare. Only for high-stakes open-ended architecture.
+Examples: design a multi-tenant production system from scratch, prove asymptotic bounds, map second-order failure modes of a distributed design, migrate a whole platform with irreversible data risk.
 
 Rules:
-- When in doubt between FAST and THINK, choose THINK
+- Prefer FAST when local tools / commands can answer and the ask is mechanical
+- Long pasted checklists are ONE unit — classify intent, not length
+- Do NOT upgrade to THINK only because the paste is long
+- When in doubt between FAST and THINK, choose THINK only if missing judgment would burn more redo cost than the model upgrade
 - When in doubt between THINK and ULTRATHINK, choose THINK
-- Only use ULTRATHINK for genuinely hard, open-ended problems
-- Ignore politeness, length, or formatting in the prompt — focus on cognitive complexity
+- Only ULTRATHINK for genuinely hard, open-ended, high-stakes problems
+- Ignore politeness and formatting — focus on cognitive complexity and cost of being wrong
 
 Respond with JSON only, no other text:
 {"tier": "fast"|"think"|"ultrathink", "confidence": 0.0-1.0, "reasoning": "one sentence max"}`;
@@ -108,34 +114,142 @@ function validatePrompt(prompt: unknown, maxLength: number): string {
   return cleaned;
 }
 
+function resolveMappings(options?: ClassifierOptions): {
+  tierToModel: Record<Tier, string>;
+  tierToEffort: Record<Tier, Effort>;
+  profileName: string;
+} {
+  const useEnv = options?.useEnvProfile !== false;
+  const fromEnv = useEnv ? profileFromEnv() : CLAUDE_PROFILE;
+  const named = options?.profile ? resolveProfile(options.profile) : fromEnv;
+
+  return {
+    tierToModel: {
+      ...DEFAULT_TIER_TO_MODEL,
+      ...named.tierToModel,
+      ...options?.tierToModel,
+    },
+    tierToEffort: {
+      ...DEFAULT_TIER_TO_EFFORT,
+      ...named.tierToEffort,
+      ...options?.tierToEffort,
+    },
+    profileName: options?.profile
+      ? resolveProfile(options.profile).name
+      : named.name,
+  };
+}
+
+function countWords(text: string): number {
+  const parts = text.trim().split(/\s+/);
+  return parts[0] === '' ? 0 : parts.length;
+}
+
+function hitAny(haystack: string, needles: readonly string[]): string | undefined {
+  return needles.find((n) => haystack.includes(n));
+}
+
+/** Whole-prompt equality against short ack vocabulary (avoid substring false positives). */
+function isShortAck(lower: string): boolean {
+  const normalized = lower.replace(/[!?.,]+$/g, '').trim();
+  const acks = new Set([
+    'yes',
+    'yep',
+    'yeah',
+    'ok',
+    'okay',
+    'k',
+    'kk',
+    'lgtm',
+    'ship it',
+    'do that',
+    'continue',
+    'go',
+    'go ahead',
+    'proceed',
+    'stop',
+    'cheap',
+    'thanks',
+    'thank you',
+    'ty',
+    'nl',
+    'same',
+    'cool',
+    'perfect',
+    'done',
+  ]);
+  return acks.has(normalized);
+}
+
 // --- Rule-based classifier ---
+/**
+ * Cost-aware rule router.
+ *
+ * Important change vs 0.2.0: long pastes no longer auto-upgrade to THINK.
+ * Length alone is a weak complexity signal for Tim's multi-line checklists.
+ */
 export function ruleBasedClassify(
   prompt: string,
   tierToModel: Record<Tier, string>,
   tierToEffort: Record<Tier, Effort>,
+  profileName = 'claude',
 ): ClassificationResult {
   const lower = prompt.toLowerCase().trim();
-  const wordCount = lower.split(/\s+/).length;
+  const wordCount = countWords(lower);
+  const lineCount = lower.split(/\n/).length;
+
+  // Explicit user overrides (highest priority)
+  if (
+    /\b(ultrathink|think\s*hard|deep\s*reason|max\s*effort)\b/.test(lower) ||
+    lower.includes('use opus') ||
+    lower.includes('/thinkgate ultra')
+  ) {
+    return {
+      tier: 'ultrathink',
+      effort: tierToEffort.ultrathink,
+      model_suggestion: tierToModel.ultrathink,
+      confidence: 0.95,
+      mode: 'rules',
+      profile: profileName,
+      reasoning: 'Rule-based: explicit ultrathink/opus override',
+    };
+  }
+
+  if (
+    /\b(no thinking|think off|fast only|cheap mode|use haiku|use flash)\b/.test(lower) ||
+    lower.includes('/thinkgate fast')
+  ) {
+    return {
+      tier: 'fast',
+      effort: tierToEffort.fast,
+      model_suggestion: tierToModel.fast,
+      confidence: 0.95,
+      mode: 'rules',
+      profile: profileName,
+      reasoning: 'Rule-based: explicit cheap/fast override',
+    };
+  }
 
   const ultrathinkSignals = [
-    'architect',
+    'architect a',
+    'architecture for',
     'distributed system',
     'production-grade',
     'from scratch',
     'failure mode',
     'multi-tenant',
-    'prove ',
+    'prove that',
     'theorem',
     'second-order',
     'end-to-end system',
-    'scalable',
     '10 million',
     '100 million',
     'at scale',
-    'complete system',
-    'full implementation',
-    'enterprise',
-  ];
+    'complete system design',
+    'platform migration',
+    'irreversible',
+    'security threat model',
+  ] as const;
 
   const thinkSignals = [
     'debug',
@@ -143,55 +257,179 @@ export function ruleBasedClassify(
     'analyse',
     'compare',
     'refactor',
-    'review',
-    'design',
+    'code review',
+    'review this',
+    'design an',
+    'design a',
     'implement',
     'trade-off',
     'tradeoff',
     'test suite',
     'optimize',
-    'improve',
-    'strategy',
-    'approach',
-    'how should',
-    'why does',
-    'explain',
+    'strategy for',
+    'how should i',
+    'why does this',
+    'root cause',
     'walk me through',
     'help me understand',
-    'build a',
-    'write a',
-    'create a',
-  ];
+    'build a feature',
+    'write a pr',
+    'architecture decision',
+    'race condition',
+    'deadlock',
+    'production incident',
+    'improve ',
+    'implement ',
+    'wire up',
+    'wire ',
+    'fix the ',
+    'routing',
+    'refactor ',
+  ] as const;
 
-  if (ultrathinkSignals.some((k) => lower.includes(k))) {
+  // Mechanical / local-tool / status traffic → stay FAST
+  // NOTE: do not put bare tokens like "ok" / "yes" here — use isShortAck().
+  const fastSignals = [
+    'git status',
+    'git diff',
+    'git log',
+    'npm test',
+    'npm run ',
+    'pytest',
+    'vitest',
+    'cargo test',
+    'typecheck',
+    'run the tests',
+    'run tests',
+    'npm install',
+    'pnpm install',
+    'yarn install',
+    'what time',
+    'status only',
+    'how much did',
+    'how much money',
+    'session cost',
+    'cost of this session',
+    'openrouter credits',
+    'openrouter usage',
+    'fix typo',
+    'format this json',
+    'json pretty',
+    'translate this to',
+    'summarize this error',
+    'what does this error mean',
+    'read file',
+    'open the file',
+    'show me the file',
+    'print the path',
+    'list files',
+    'healthcheck',
+    'health check',
+  ] as const;
+
+  const ultraHit = hitAny(lower, ultrathinkSignals);
+  if (ultraHit) {
     return {
       tier: 'ultrathink',
       effort: tierToEffort.ultrathink,
       model_suggestion: tierToModel.ultrathink,
-      confidence: 0.7,
+      confidence: 0.78,
       mode: 'rules',
-      reasoning: 'Rule-based: detected deep architecture/design signals',
+      profile: profileName,
+      reasoning: `Rule-based: ultrathink signal "${ultraHit}"`,
     };
   }
 
-  if (thinkSignals.some((k) => lower.includes(k)) || wordCount > 25) {
+  const thinkHit = hitAny(lower, thinkSignals);
+  if (thinkHit) {
     return {
       tier: 'think',
       effort: tierToEffort.think,
       model_suggestion: tierToModel.think,
-      confidence: 0.7,
+      confidence: 0.8,
       mode: 'rules',
-      reasoning: 'Rule-based: detected analytical task or complex query',
+      profile: profileName,
+      reasoning: `Rule-based: analytical signal "${thinkHit}"`,
     };
   }
 
+  if (isShortAck(lower) || (wordCount <= 3 && !thinkHit)) {
+    return {
+      tier: 'fast',
+      effort: tierToEffort.fast,
+      model_suggestion: tierToModel.fast,
+      confidence: 0.9,
+      mode: 'rules',
+      profile: profileName,
+      reasoning: isShortAck(lower)
+        ? 'Rule-based: short ack'
+        : 'Rule-based: very short prompt',
+    };
+  }
+
+  const fastHit = hitAny(lower, fastSignals);
+  if (fastHit) {
+    return {
+      tier: 'fast',
+      effort: tierToEffort.fast,
+      model_suggestion: tierToModel.fast,
+      confidence: 0.8,
+      mode: 'rules',
+      profile: profileName,
+      reasoning: `Rule-based: mechanical/fast signal "${fastHit}"`,
+    };
+  }
+
+  // Multi-question analytical paste (not mere checklist length)
+  const questionMarks = (lower.match(/\?/g) || []).length;
+  if (questionMarks >= 3 && wordCount > 40) {
+    return {
+      tier: 'think',
+      effort: tierToEffort.think,
+      model_suggestion: tierToModel.think,
+      confidence: 0.72,
+      mode: 'rules',
+      profile: profileName,
+      reasoning: 'Rule-based: multi-question analytical paste',
+    };
+  }
+
+  // Huge single blob with zero questions and no signals → still FAST
+  // (long status dumps / logs / checklists)
+  if (wordCount > 200 || lineCount > 40) {
+    return {
+      tier: 'fast',
+      effort: tierToEffort.fast,
+      model_suggestion: tierToModel.fast,
+      confidence: 0.65,
+      mode: 'rules',
+      profile: profileName,
+      reasoning: 'Rule-based: long paste without analytical signals — classify intent not length',
+    };
+  }
+
+  // Medium multi-line with no signals: stay FAST (checklists, fragments)
+  if (lineCount >= 3 && wordCount <= 120) {
+    return {
+      tier: 'fast',
+      effort: tierToEffort.fast,
+      model_suggestion: tierToModel.fast,
+      confidence: 0.68,
+      mode: 'rules',
+      profile: profileName,
+      reasoning: 'Rule-based: multi-line paste without cognitive signals',
+    };
+  }
+
+  // Default mid-length prose → FAST. Old ">25 words => think" burned money.
   return {
     tier: 'fast',
     effort: tierToEffort.fast,
     model_suggestion: tierToModel.fast,
     confidence: 0.7,
     mode: 'rules',
-    reasoning: 'Rule-based: short or simple query',
+    profile: profileName,
+    reasoning: 'Rule-based: default fast (no strong analytical signals)',
   };
 }
 
@@ -201,16 +439,19 @@ export async function classifyPrompt(
   apiKey?: string,
   options?: ClassifierOptions,
 ): Promise<ClassificationResult> {
-  const tierToModel = { ...DEFAULT_TIER_TO_MODEL, ...options?.tierToModel };
-  const tierToEffort = { ...DEFAULT_TIER_TO_EFFORT, ...options?.tierToEffort };
+  const { tierToModel, tierToEffort, profileName } = resolveMappings(options);
   const maxLength = options?.maxPromptLength ?? DEFAULT_MAX_PROMPT_LENGTH;
   const useCache = options?.cache !== false;
 
   const cleaned = validatePrompt(prompt, maxLength);
+  const mappingHash = createHash('sha256')
+    .update(JSON.stringify({ tierToModel, tierToEffort, profileName }))
+    .digest('hex')
+    .slice(0, 12);
 
   // Rule-based path (no API key)
   if (!apiKey) {
-    const ruleKey = cacheKey('rules', cleaned);
+    const ruleKey = cacheKey(`rules:${mappingHash}`, cleaned);
     if (useCache) {
       const cached = cache.get(ruleKey);
       if (cached) {
@@ -219,14 +460,14 @@ export async function classifyPrompt(
       }
     }
 
-    const result = ruleBasedClassify(cleaned, tierToModel, tierToEffort);
-    if (useCache) cache.set(cacheKey('rules', cleaned), result);
-    log('info', 'classified', { mode: 'rules', tier: result.tier });
+    const result = ruleBasedClassify(cleaned, tierToModel, tierToEffort, profileName);
+    if (useCache) cache.set(ruleKey, result);
+    log('info', 'classified', { mode: 'rules', tier: result.tier, profile: profileName });
     return result;
   }
 
   // AI path
-  const aiKey = cacheKey('ai', cleaned);
+  const aiKey = cacheKey(`ai:${mappingHash}`, cleaned);
   if (useCache) {
     const cached = cache.get(aiKey);
     if (cached) {
@@ -257,8 +498,8 @@ export async function classifyPrompt(
       parsed = JSON.parse(clean);
     } catch {
       log('warn', 'failed to parse AI response, falling back to rules', { raw: clean });
-      const fallback = ruleBasedClassify(cleaned, tierToModel, tierToEffort);
-      if (useCache) cache.set(cacheKey('rules', cleaned), fallback);
+      const fallback = ruleBasedClassify(cleaned, tierToModel, tierToEffort, profileName);
+      if (useCache) cache.set(cacheKey(`rules:${mappingHash}`, cleaned), fallback);
       return fallback;
     }
 
@@ -271,17 +512,23 @@ export async function classifyPrompt(
       confidence: Math.min(1, Math.max(0, parsed.confidence ?? 0.8)),
       reasoning: parsed.reasoning ?? '',
       mode: 'ai',
+      profile: profileName,
     };
 
     if (useCache) cache.set(aiKey, result);
-    log('info', 'classified', { mode: 'ai', tier: result.tier, confidence: result.confidence });
+    log('info', 'classified', {
+      mode: 'ai',
+      tier: result.tier,
+      confidence: result.confidence,
+      profile: profileName,
+    });
     return result;
   } catch (err) {
     log('error', 'AI classification failed, falling back to rules', {
       error: err instanceof Error ? err.message : String(err),
     });
-    const fallback = ruleBasedClassify(cleaned, tierToModel, tierToEffort);
-    if (useCache) cache.set(cacheKey('rules', cleaned), fallback);
+    const fallback = ruleBasedClassify(cleaned, tierToModel, tierToEffort, profileName);
+    if (useCache) cache.set(cacheKey(`rules:${mappingHash}`, cleaned), fallback);
     return fallback;
   }
 }
